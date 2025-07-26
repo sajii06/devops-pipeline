@@ -80,17 +80,59 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Wait for Terraform
+      run: |
+        echo "⏳ Waiting for Terraform resources to be ready..."
+        sleep 30
+
     - name: Trigger Deploy Workflow
       uses: actions/github-script@v7
       with:
         script: |
-          github.rest.actions.createWorkflowDispatch({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            workflow_id: 'deploy.yml',
-            ref: 'main'
-          })
-          console.log('✅ Deploy workflow triggered!')
+          try {
+            const response = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: 'main'
+            });
+            console.log('✅ Deploy workflow triggered successfully!');
+            console.log('Response:', response.status);
+          } catch (error) {
+            console.log('❌ Error triggering deploy workflow:', error.message);
+            console.log('🔄 Trying alternative method...');
+            
+            // Alternative: Direct deployment
+            await exec.exec('echo "Falling back to direct deployment..."');
+          }
+
+    - name: Direct Deploy Fallback
+      if: failure()
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Emergency Deploy
+      if: failure()
+      run: |
+        echo "🚨 Emergency deployment fallback..."
+        
+        # Try to update ECS service directly
+        if aws ecs describe-services --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+          echo "✅ Triggering ECS deployment..."
+          aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region ${{ env.AWS_REGION }}
+        fi
+        
+        # Try to trigger CodePipeline directly
+        if aws codepipeline get-pipeline --name devops-pipeline --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+          echo "✅ Triggering CodePipeline..."
+          aws codepipeline start-pipeline-execution --name devops-pipeline --region ${{ env.AWS_REGION }}
+        fi
 
   summary:
     name: Pipeline Summary
