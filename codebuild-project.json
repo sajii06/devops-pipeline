@@ -1,0 +1,32 @@
+{
+    "name": "devops-pipeline-build",
+    "description": "Build project for DevOps pipeline",
+    "source": {
+        "type": "CODEPIPELINE",
+        "buildspec": "buildspec.yml"
+    },
+    "artifacts": {
+        "type": "CODEPIPELINE"
+    },
+    "environment": {
+        "type": "LINUX_CONTAINER",
+        "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+        "computeType": "BUILD_GENERAL1_MEDIUM",
+        "privilegedMode": true,
+        "environmentVariables": [
+            {
+                "name": "AWS_DEFAULT_REGION",
+                "value": "eu-north-1"
+            },
+            {
+                "name": "AWS_ACCOUNT_ID",
+                "value": "070593201734"
+            },
+            {
+                "name": "IMAGE_REPO_NAME",
+                "value": "devops-pipeline"
+            }
+        ]
+    },
+    "serviceRole": "arn:aws:iam::070593201734:role/devops-pipeline-codebuild-role"
+}

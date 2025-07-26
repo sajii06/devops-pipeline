@@ -1,4 +1,4 @@
-resource "aws_codepipeline" "pipeline" {
+﻿resource "aws_codepipeline" "pipeline" {
   name     = "${var.project_name}-pipeline"
   role_arn = var.service_role_arn
 
@@ -13,16 +13,14 @@ resource "aws_codepipeline" "pipeline" {
     action {
       name             = "Source"
       category         = "Source"
-      owner            = "ThirdParty"
-      provider         = "GitHub"
+      owner            = "AWS"
+      provider         = "S3"
       version          = "1"
       output_artifacts = ["source_output"]
 
       configuration = {
-        Owner  = split("/", var.github_repo)[0]
-        Repo   = split("/", var.github_repo)[1]
-        Branch = var.github_branch
-        OAuthToken = var.github_token
+        S3Bucket    = var.artifact_bucket
+        S3ObjectKey = "source.zip"
       }
     }
   }
@@ -41,6 +39,25 @@ resource "aws_codepipeline" "pipeline" {
 
       configuration = {
         ProjectName = var.codebuild_project_name
+      }
+    }
+  }
+
+  stage {
+    name = "Deploy"
+
+    action {
+      name            = "Deploy"
+      category        = "Deploy"
+      owner           = "AWS"
+      provider        = "ECS"
+      input_artifacts = ["build_output"]
+      version         = "1"
+
+      configuration = {
+        ClusterName = var.ecs_cluster_name
+        ServiceName = var.ecs_service_name
+        FileName    = "imagedefinitions.json"
       }
     }
   }

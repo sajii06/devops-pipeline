@@ -14,6 +14,7 @@ variable "artifact_bucket" {
 }
 
 variable "github_repo" {
-  description = "GitHub repository in format owner/repo"
+  description = "GitHub repository (unused but required for compatibility)"
   type        = string
+  default     = "placeholder"
 }

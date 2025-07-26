@@ -18,18 +18,22 @@ variable "codebuild_project_name" {
   type        = string
 }
 
-variable "github_repo" {
-  description = "GitHub repository in format owner/repo"
+variable "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
   type        = string
 }
 
-variable "github_branch" {
-  description = "GitHub branch to trigger pipeline"
+variable "ecs_service_name" {
+  description = "Name of the ECS service"
   type        = string
 }
 
-variable "github_token" {
-  description = "GitHub personal access token"
+variable "codedeploy_application_name" {
+  description = "Name of the CodeDeploy application"
   type        = string
-  sensitive   = true
+}
+
+variable "codedeploy_deployment_group_name" {
+  description = "Name of the CodeDeploy deployment group"
+  type        = string
 }

@@ -27,7 +27,7 @@ func TestTerraformCodePipeline(t *testing.T) {
 		NoColor: true,
 	}
 
-	// Run "terraform init" and "terraform plan". 
+	// Run "terraform init" and "terraform plan".
 	terraform.Init(t, terraformOptions)
 	planOutput := terraform.Plan(t, terraformOptions)
 
@@ -54,7 +54,7 @@ func TestS3BucketModule(t *testing.T) {
 
 	terraform.InitAndPlan(t, terraformOptions)
 	planOutput := terraform.Plan(t, terraformOptions)
-	
+
 	assert.Contains(t, planOutput, "aws_s3_bucket.artifacts")
 	assert.Contains(t, planOutput, "aws_s3_bucket_versioning.artifacts_versioning")
 }
