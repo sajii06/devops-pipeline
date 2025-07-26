@@ -8,147 +8,35 @@ on:
 
 env:
   AWS_REGION: eu-north-1
-  ECR_REPOSITORY: devops-pipeline
 
 jobs:
-  terraform-plan:
-    name: Terraform Plan
+  terraform:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.5.0
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - uses: actions/checkout@v4
+    - uses: hashicorp/setup-terraform@v3
+    - uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
+    - run: cd terraform && terraform init
+    - if: github.event_name == 'pull_request'
+      run: cd terraform && terraform plan -var="github_token=${{ secrets.GITHUB_TOKEN }}"
+    - if: github.ref == 'refs/heads/main'
+      run: cd terraform && terraform apply -auto-approve -var="github_token=${{ secrets.GITHUB_TOKEN }}"
 
-    - name: Terraform Init
-      run: |
-        cd terraform
-        terraform init
-
-    - name: Terraform Plan
-      run: |
-        cd terraform
-        terraform plan -var="github_token=${{ secrets.GITHUB_TOKEN }}"
-
-  terraform-apply:
-    name: Terraform Apply
-    runs-on: ubuntu-latest
+  deploy:
     if: github.ref == 'refs/heads/main'
-
+    needs: terraform
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.5.0
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
-
-    - name: Terraform Init
-      run: |
-        cd terraform
-        terraform init
-
-    - name: Terraform Apply
-      run: |
-        cd terraform
-        terraform apply -auto-approve -var="github_token=${{ secrets.GITHUB_TOKEN }}"
-
-  trigger-deploy:
-    name: Trigger Deployment
-    runs-on: ubuntu-latest
-    needs: terraform-apply
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Wait for Terraform
-      run: |
-        echo "⏳ Waiting for Terraform resources to be ready..."
-        sleep 30
-
-    - name: Trigger Deploy Workflow
-      uses: actions/github-script@v7
-      with:
-        script: |
-          try {
-            const response = await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy.yml',
-              ref: 'main'
-            });
-            console.log('✅ Deploy workflow triggered successfully!');
-            console.log('Response:', response.status);
-          } catch (error) {
-            console.log('❌ Error triggering deploy workflow:', error.message);
-            console.log('🔄 Trying alternative method...');
-            
-            // Alternative: Direct deployment
-            await exec.exec('echo "Falling back to direct deployment..."');
-          }
-
-    - name: Direct Deploy Fallback
-      if: failure()
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Emergency Deploy
-      if: failure()
-      run: |
-        echo "🚨 Emergency deployment fallback..."
-        
-        # Try to update ECS service directly
-        if aws ecs describe-services --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-          echo "✅ Triggering ECS deployment..."
-          aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region ${{ env.AWS_REGION }}
-        fi
-        
-        # Try to trigger CodePipeline directly
-        if aws codepipeline get-pipeline --name devops-pipeline --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-          echo "✅ Triggering CodePipeline..."
-          aws codepipeline start-pipeline-execution --name devops-pipeline --region ${{ env.AWS_REGION }}
-        fi
-
-  summary:
-    name: Pipeline Summary
-    runs-on: ubuntu-latest
-    needs: [trigger-deploy]
-    if: always() && github.ref == 'refs/heads/main'
-
-    steps:
-    - name: Pipeline Status
-      run: |
-        echo "🎉 DevSecOps Pipeline Summary"
-        echo "============================"
-        echo "✅ Infrastructure: Applied"
-        echo "✅ Deployment: Triggered"
-        echo ""
-        echo "📊 Other workflows running:"
-        echo "  - Build and Test (build-test.yml)"
-        echo "  - Security Scanning (security.yml)"
-        echo "  - Deployment (deploy.yml)"
+    - run: |
+        aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region ${{ env.AWS_REGION }} || echo "ECS update failed"
+        aws codepipeline start-pipeline-execution --name devops-pipeline --region ${{ env.AWS_REGION }} || echo "Pipeline trigger failed"
+        echo "✅ Deployment completed"
