@@ -1,29 +1,9 @@
-# GitHub Actions Workflows
+# Workflows
 
-Ultra-compact workflows for fast CI/CD:
+Ultra-micro CI/CD:
 
-## 🔄 Workflows (Under 25 lines each!)
+- **devsecops.yml** (16 lines) - Terraform + Deploy
+- **build-test.yml** (8 lines) - Build + Test  
+- **security.yml** (7 lines) - Security Scan
 
-### 1. **devsecops.yml** - Main Pipeline (25 lines)
-- Terraform plan/apply + deployment
-- Triggers: Push to main/develop, Pull requests
-
-### 2. **build-test.yml** - Build & Test (12 lines)  
-- Python setup, Docker build
-- Triggers: Push to main/develop, Pull requests
-
-### 3. **security.yml** - Security Scanning (15 lines)
-- tfsec + Trivy scanning
-- Triggers: Push to main/develop, Pull requests
-
-## 🚀 Manual Deploy Options
-
-- **PowerShell**: `.\manual-deploy.ps1` (8 lines)
-- **Bash**: `./manual-deploy.sh` (8 lines)
-
-## 📊 Benefits
-
-- ⚡ **Ultra-fast**: All workflows under 25 lines
-- 🔄 **Parallel**: All run simultaneously  
-- 📝 **Minimal**: Essential functionality only
-- 🛠️ **Simple**: Easy to modify and debug
+Manual deploy: `.\manual-deploy.ps1` (4 lines)

@@ -1,19 +1,9 @@
-name: Build and Test
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-
+name: Build
+on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    - run: cd app && pip install -r requirements.txt
-    - run: cd app && python -c "import app; print('✅ App works')"
-    - run: cd app && docker build -t devops-pipeline:$GITHUB_SHA .
+    - run: cd app && pip install -r requirements.txt && python -c "import app" && docker build -t app .
