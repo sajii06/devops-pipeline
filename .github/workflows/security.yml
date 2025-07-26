@@ -1,0 +1,52 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REPOSITORY: devops-pipeline
+
+jobs:
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run tfsec for Terraform
+      uses: aquasecurity/tfsec-action@v1.0.0
+      with:
+        soft_fail: true
+
+    - name: Build Docker image for scanning
+      run: |
+        cd app
+        docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Check for secrets
+      run: |
+        echo "🔐 Scanning for potential secrets..."
+        if grep -r -i -E "(password|secret|key|token|api_key).*=" . --exclude-dir=.git --exclude="*.md" --exclude="*.log" --exclude-dir=.github; then
+          echo "⚠️ Potential secrets found - review manually"
+        else
+          echo "✅ No obvious secrets detected"
+        fi

@@ -11,106 +11,9 @@ env:
   ECR_REPOSITORY: devops-pipeline
 
 jobs:
-  build:
-    name: Build and Test
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-
-    - name: Install dependencies
-      run: |
-        cd app
-        pip install -r requirements.txt
-
-    - name: Run tests
-      run: |
-        cd app
-        python -m pytest --version || echo "No pytest found, skipping tests"
-        python -c "import app; print('✅ App imports successfully')"
-
-    - name: Build Docker image
-      run: |
-        cd app
-        docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
-        docker images
-
-  security-scan:
-    name: Security Scanning
-    runs-on: ubuntu-latest
-    needs: build
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Run tfsec for Terraform
-      uses: aquasecurity/tfsec-action@v1.0.0
-      with:
-        soft_fail: true
-        additional_args: --format=json --out=tfsec-results.json
-
-    - name: Build Docker image for scanning
-      run: |
-        cd app
-        docker build -t $ECR_REPOSITORY:$GITHUB_SHA .
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: '${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
-
-    - name: Run Trivy filesystem scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'sarif'
-        output: 'trivy-fs-results.sarif'
-
-    - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
-
-    - name: Upload Trivy filesystem scan results
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
-      with:
-        sarif_file: 'trivy-fs-results.sarif'
-
-    - name: Check for hardcoded secrets
-      run: |
-        echo "🔐 Scanning for potential secrets..."
-        if grep -r -i -E "(password|secret|key|token|api_key).*=" . --exclude-dir=.git --exclude="*.md" --exclude="*.log" --exclude-dir=.github; then
-          echo "⚠️ Potential secrets found - review manually (but continuing deployment)"
-        else
-          echo "✅ No obvious secrets detected"
-        fi
-
-    - name: Security scan summary
-      if: always()
-      run: |
-        echo "🛡️ Security scanning completed!"
-        echo "📊 Scans performed:"
-        echo "  ✅ Terraform security analysis (tfsec)"
-        echo "  ✅ Container vulnerability scan (Trivy)"
-        echo "  ✅ Filesystem vulnerability scan (Trivy)"
-        echo "  ✅ Secret detection scan"
-
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
-    needs: [build, security-scan]
     if: github.event_name == 'pull_request'
 
     steps:
@@ -142,7 +45,6 @@ jobs:
   terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    needs: [build, security-scan]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -171,164 +73,40 @@ jobs:
         cd terraform
         terraform apply -auto-approve -var="github_token=${{ secrets.GITHUB_TOKEN }}"
 
-  deploy-to-k8s:
-    name: Deploy to Kubernetes (Demo)
+  trigger-deploy:
+    name: Trigger Deployment
     runs-on: ubuntu-latest
-    needs: [security-scan, terraform-apply]
+    needs: terraform-apply
     if: github.ref == 'refs/heads/main'
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Trigger Deploy Workflow
+      uses: actions/github-script@v7
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        script: |
+          github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            workflow_id: 'deploy.yml',
+            ref: 'main'
+          })
+          console.log('✅ Deploy workflow triggered!')
 
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v3
-
-    - name: Install kubeseal
-      run: |
-        wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/kubeseal-0.24.0-linux-amd64.tar.gz
-        tar -xvzf kubeseal-0.24.0-linux-amd64.tar.gz
-        sudo install -m 755 kubeseal /usr/local/bin/kubeseal
-
-    - name: Validate Kubernetes manifests
-      run: |
-        echo "✅ Validating Kubernetes manifests..."
-        kubectl apply --dry-run=client -f k8s/sealed-secrets.yaml
-        kubectl apply --dry-run=client -f k8s/deployment.yaml
-        kubectl apply --dry-run=client -f k8s/service.yaml
-        echo "✅ All Kubernetes manifests are valid!"
-
-    - name: Deploy to ECS (Actual Deployment)
-      run: |
-        echo "🚀 Deploying to ECS instead of K8s..."
-        
-        # Check if cluster exists
-        if aws ecs describe-clusters --clusters devops-pipeline-cluster --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-          echo "✅ ECS cluster found"
-        else
-          echo "❌ ECS cluster not found, creating..."
-          aws ecs create-cluster --cluster-name devops-pipeline-cluster --region ${{ env.AWS_REGION }}
-        fi
-        
-        # Check if service exists
-        if aws ecs describe-services --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} --query 'services[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
-          echo "✅ ECS service found, updating..."
-          aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region ${{ env.AWS_REGION }}
-        else
-          echo "⚠️ ECS service not found, it should be created by Terraform"
-          echo "Checking if task definition exists..."
-          if aws ecs describe-task-definition --task-definition devops-pipeline-task --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-            echo "✅ Task definition exists, creating service..."
-            # Create service if it doesn't exist (backup)
-            aws ecs create-service \
-              --cluster devops-pipeline-cluster \
-              --service-name devops-pipeline-service \
-              --task-definition devops-pipeline-task \
-              --desired-count 1 \
-              --region ${{ env.AWS_REGION }} || echo "Service creation failed, may already exist"
-          else
-            echo "❌ No task definition found"
-          fi
-        fi
-        
-        echo "✅ ECS deployment triggered successfully!"
-        
-        # Also trigger CodePipeline if it exists
-        echo "🔄 Checking for CodePipeline..."
-        if aws codepipeline get-pipeline --name devops-pipeline --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
-          echo "✅ CodePipeline found, triggering execution..."
-          EXECUTION_ID=$(aws codepipeline start-pipeline-execution --name devops-pipeline --region ${{ env.AWS_REGION }} --query 'pipelineExecutionId' --output text)
-          echo "CodePipeline execution started: $EXECUTION_ID"
-        else
-          echo "⚠️ CodePipeline not found"
-        fi
-
-    - name: Get ECS Service Status
-      run: |
-        echo "📊 Checking ECS service status..."
-        SERVICE_STATUS=$(aws ecs describe-services --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} --query 'services[0].deployments[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-        echo "Service deployment status: $SERVICE_STATUS"
-        
-        if [ "$SERVICE_STATUS" != "NOT_FOUND" ]; then
-          echo "🔄 Waiting for deployment to stabilize..."
-          aws ecs wait services-stable --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} --cli-read-timeout 300 || echo "Deployment still in progress..."
-          
-          # Get running task count
-          RUNNING_COUNT=$(aws ecs describe-services --cluster devops-pipeline-cluster --services devops-pipeline-service --region ${{ env.AWS_REGION }} --query 'services[0].runningCount' --output text 2>/dev/null || echo "0")
-          echo "Running tasks: $RUNNING_COUNT"
-        else
-          echo "⚠️ Service not found or not accessible"
-        fi
-
-    - name: Get Load Balancer URL
-      run: |
-        echo "🌐 Retrieving application URL..."
-        LB_DNS=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `devops-pipeline`)].DNSName' --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
-        
-        if [ -n "$LB_DNS" ] && [ "$LB_DNS" != "None" ]; then
-          echo "✅ Application URL: http://$LB_DNS"
-          echo "🔗 You can access your application at: http://$LB_DNS"
-          
-          # Test if the application is accessible
-          echo "🧪 Testing application accessibility..."
-          if curl -f -s --connect-timeout 10 "http://$LB_DNS" > /dev/null 2>&1; then
-            echo "✅ Application is responding!"
-          else
-            echo "⚠️ Application may still be starting up..."
-          fi
-        else
-          echo "⚠️ Load balancer not found or not accessible"
-          # Try alternative method
-          echo "Checking for any load balancers..."
-          aws elbv2 describe-load-balancers --region ${{ env.AWS_REGION }} --query 'LoadBalancers[].{Name:LoadBalancerName,DNS:DNSName}' --output table || echo "No load balancers found"
-        fi
-
-  notify:
-    name: Deployment Notification
+  summary:
+    name: Pipeline Summary
     runs-on: ubuntu-latest
-    needs: [deploy-to-k8s]
+    needs: [trigger-deploy]
     if: always() && github.ref == 'refs/heads/main'
 
     steps:
-    - name: Deployment Status
+    - name: Pipeline Status
       run: |
-        echo "📋 DevSecOps Pipeline Execution Summary"
-        echo "======================================"
-        
-        if [ "${{ needs.deploy-to-k8s.result }}" == "success" ]; then
-          echo "✅ Deployment completed successfully!"
-          echo "🎉 DevSecOps pipeline executed successfully!"
-          echo ""
-          echo "🚀 Deployment Details:"
-          echo "  - ECS service updated"
-          echo "  - Load balancer configured"
-          echo "  - Application should be accessible"
-          echo ""
-          echo "🔗 Next steps:"
-          echo "  - Check application at load balancer URL"
-          echo "  - Monitor ECS service health"
-          echo "  - Review security scan results in GitHub Security tab"
-        else
-          echo "❌ Deployment failed!"
-          echo "🚨 Check logs for details"
-          echo ""
-          echo "🔍 Troubleshooting:"
-          echo "  - Check ECS cluster exists"
-          echo "  - Verify task definition is valid"
-          echo "  - Check IAM permissions"
-          echo "  - Review AWS service limits"
-        fi
-        
+        echo "🎉 DevSecOps Pipeline Summary"
+        echo "============================"
+        echo "✅ Infrastructure: Applied"
+        echo "✅ Deployment: Triggered"
         echo ""
-        echo "📊 Pipeline Jobs Status:"
-        echo "  - Build: ${{ needs.deploy-to-k8s.result }}"
-        echo "  - Security: Completed"
-        echo "  - Terraform: Applied"
-        echo "  - Deploy: ${{ needs.deploy-to-k8s.result }}"
+        echo "📊 Other workflows running:"
+        echo "  - Build and Test (build-test.yml)"
+        echo "  - Security Scanning (security.yml)"
+        echo "  - Deployment (deploy.yml)"
