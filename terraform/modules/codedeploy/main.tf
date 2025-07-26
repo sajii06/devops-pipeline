@@ -1,10 +1,10 @@
-resource "aws_codedeploy_application" "app" {
+resource "aws_codedeploy_app" "app" {
   compute_platform = "ECS"
   name             = "${var.project_name}-codedeploy-app"
 }
 
 resource "aws_codedeploy_deployment_group" "deployment_group" {
-  app_name              = aws_codedeploy_application.app.name
+  app_name              = aws_codedeploy_app.app.name
   deployment_group_name = "${var.project_name}-deployment-group"
   service_role_arn      = var.service_role_arn
 

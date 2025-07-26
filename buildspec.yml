@@ -3,9 +3,11 @@ version: 0.2
 phases:
   build:
     commands:
-      - echo "Building for deadline submission"
-      - echo '[{"name":"devops-pipeline-app","imageUri":"070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:deadline"}]' > imagedefinitions.json
+      - echo Build started on `date`
+      - echo Creating imagedefinitions.json...
+      - printf '[{"name":"devops-pipeline-app","imageUri":"070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:latest"}]' > imagedefinitions.json
       - cat imagedefinitions.json
+      - echo Build completed successfully
 
 artifacts:
   files:

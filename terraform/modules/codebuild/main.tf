@@ -26,7 +26,7 @@ resource "aws_codebuild_project" "build_project" {
 
     environment_variable {
       name  = "IMAGE_REPO_NAME"
-      value = var.project_name
+      value = "devops-pipeline-repo"
     }
 
     environment_variable {
