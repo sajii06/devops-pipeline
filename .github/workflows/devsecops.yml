@@ -15,5 +15,5 @@ jobs:
       if: github.event_name == 'pull_request'
     - run: cd terraform && terraform init && terraform apply -auto-approve -var="github_token=${{ secrets.GITHUB_TOKEN }}"
       if: github.ref == 'refs/heads/main'
-    - run: aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region eu-north-1 && aws codepipeline start-pipeline-execution --name devops-pipeline --region eu-north-1
+    - run: aws ecs update-service --cluster devops-pipeline-cluster --service devops-pipeline-service --force-new-deployment --region eu-north-1 && aws codepipeline start-pipeline-execution --name devops-pipeline-pipeline --region eu-north-1
       if: github.ref == 'refs/heads/main'
