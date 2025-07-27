@@ -1,9 +1,18 @@
 version: 0.2
 
 phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 070593201734.dkr.ecr.eu-north-1.amazonaws.com
   build:
     commands:
       - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t devops-pipeline ./app
+      - docker tag devops-pipeline:latest 070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:latest
+      - echo Pushing the Docker image...
+      - docker push 070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:latest
       - echo Creating imagedefinitions.json...
       - printf '[{"name":"devops-pipeline-app","imageUri":"070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:latest"}]' > imagedefinitions.json
       - cat imagedefinitions.json

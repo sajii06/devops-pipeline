@@ -15,12 +15,7 @@
                     "protocol": "tcp"
                 }
             ],
-            "environment": [
-                {
-                    "name": "ENVIRONMENT",
-                    "value": "production"
-                }
-            ],
+            "essential": true,
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
@@ -28,8 +23,7 @@
                     "awslogs-region": "eu-north-1",
                     "awslogs-stream-prefix": "ecs"
                 }
-            },
-            "essential": true
+            }
         }
     ]
 }

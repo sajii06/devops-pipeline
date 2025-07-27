@@ -1,0 +1,30 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Starting pre-build phase"
+      - docker --version
+      - aws --version
+      - whoami
+      - pwd
+      - ls -la
+  build:
+    commands:
+      - echo "Starting build phase"
+      - echo "Listing app directory"
+      - ls -la app/
+      - echo "Building simple Docker image"
+      - cd app
+      - echo "FROM nginx:alpine" > Dockerfile.test
+      - echo "COPY . /usr/share/nginx/html" >> Dockerfile.test
+      - docker build -f Dockerfile.test -t test-image .
+      - echo "Docker build completed"
+  post_build:
+    commands:
+      - echo "Post-build phase"
+      - echo '[{"name":"devops-pipeline-app","imageUri":"test"}]' > ../imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
