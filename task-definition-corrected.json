@@ -1,0 +1,35 @@
+{
+    "family": "devops-pipeline-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::070593201734:role/ecsTaskExecutionRole",
+    "containerDefinitions": [
+        {
+            "name": "devops-pipeline-app",
+            "image": "070593201734.dkr.ecr.eu-north-1.amazonaws.com/devops-pipeline:latest",
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "ENVIRONMENT",
+                    "value": "production"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/devops-pipeline",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "essential": true
+        }
+    ]
+}
